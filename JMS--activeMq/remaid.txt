@@ -10,4 +10,6 @@ SessionAwareMessageListener的设计就是为了方便我们在接收到消息�
 MessageListenerAdapter
 MessageListenerAdapter类实现了MessageListener接口和SessionAwareMessageListener接口，它的主要作用是将接收到的消息进行类型转换，然后通过反射的形式把它交给一个普通的Java类进行处理。
 
+
+demo放在seafood项目中
 参考博客：https://blog.csdn.net/s296850101/article/details/52367453
