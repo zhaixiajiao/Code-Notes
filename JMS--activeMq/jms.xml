@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd
+        http://activemq.apache.org/schema/core 
+        http://activemq.apache.org/schema/core/activemq-core.xsd">
+
+    <!-- 配置JMS连接工厂 -->
+    <bean id="connectionFactory" class="org.apache.activemq.ActiveMQConnectionFactory">
+        <property name="brokerURL" value="failover:(tcp://localhost:61616)"/>
+    </bean>
+
+
+    <!--队列1生产者发送消息，消费者接收消息-start-->
+    <!-- 定义消息队列（Queue） -->
+    <bean id="queueDestination" class="org.apache.activemq.command.ActiveMQQueue">
+        <!-- 设置消息队列的名字 -->
+        <constructor-arg>
+            <value>queue_one</value>
+        </constructor-arg>
+    </bean>
+    <!-- 配置JMS模板（Queue），Spring提供的JMS工具类，它发送、接收消息。 -->
+    <bean id="jmsTemplate" class="org.springframework.jms.core.JmsTemplate">
+        <property name="connectionFactory" ref="connectionFactory"/>
+        <property name="defaultDestination" ref="queueDestination"/>
+        <property name="receiveTimeout" value="10000"/>
+    </bean>
+    <!--queue消息生产者 -->
+    <bean id="producerService" class="com.seafood.queue.ProducerServiceImpl">
+        <property name="jmsTemplate" ref="jmsTemplate"></property>
+    </bean>
+    <!--queue消息消费者 -->
+    <bean id="consumerService" class="com.seafood.queue.ConsumerServiceImpl">
+        <property name="jmsTemplate" ref="jmsTemplate"></property>
+    </bean>
+    <!--队列1-end-->
+
+
+    <!--队列2 生产者生产消息，自动监听接收消息(messageListener)-start-->
+    <!-- 定义消息队列（Queue），我们监听一个新的队列，queue2 -->
+    <bean id="queueDestination2" class="org.apache.activemq.command.ActiveMQQueue">
+        <!-- 设置消息队列的名字 -->
+        <constructor-arg>
+            <value>queue2</value>
+        </constructor-arg>
+    </bean>
+
+    <!-- 配置消息队列监听者（Queue），代码下面给出，只有一个onMessage方法 -->
+    <bean id="queueMessageListener" class="com.seafood.queue.QueueMessageListener"/>
+    <!-- 消息监听容器（Queue），配置连接工厂，监听的队列是queue2，监听器是上面定义的监听器 -->
+    <bean id="jmsContainer" class="org.springframework.jms.listener.DefaultMessageListenerContainer">
+        <property name="connectionFactory" ref="connectionFactory"/>
+        <property name="destination" ref="queueDestination2"/>
+        <property name="messageListener" ref="queueMessageListener"/>
+    </bean>
+    <!--队列2-end-->
+
+
+    <!-- 消息主题监听者 和 主题监听容器 可以配置多个，即多个订阅者 -->
+    <!-- 定义消息主题（Topic） -->
+    <bean id="topicDestination" class="org.apache.activemq.command.ActiveMQTopic">
+        <constructor-arg>
+            <value>guo_topic</value>
+        </constructor-arg>
+    </bean>
+    <!-- 配置JMS模板（Topic），pubSubDomain="true"-->
+    <bean id="topicJmsTemplate" class="org.springframework.jms.core.JmsTemplate">
+        <property name="connectionFactory" ref="connectionFactory"/>
+        <property name="defaultDestination" ref="topicDestination"/>
+        <!-- "pubSubDomain"是否设置为True。如果为True，则是Topic；如果是false或者默认，则是queue -->
+        <property name="pubSubDomain" value="true"/>
+        <property name="receiveTimeout" value="10000"/>
+    </bean>
+    <!--topic消息发布者 -->
+    <bean id="topicProvider" class="com.seafood.topic.TopicProvider">
+        <property name="topicJmsTemplate" ref="topicJmsTemplate"></property>
+    </bean>
+    <!-- 消息主题监听者(Topic) -->
+    <bean id="topicMessageListener" class="com.seafood.topic.TopicMessageListener"/>
+    <!-- 主题监听容器 （Topic） -->
+    <bean id="topicJmsContainer" class="org.springframework.jms.listener.DefaultMessageListenerContainer">
+        <property name="connectionFactory" ref="connectionFactory"/>
+        <property name="destination" ref="topicDestination"/>
+        <property name="messageListener" ref="topicMessageListener"/>
+    </bean>
+
+    <!--SessionAwareMessageListener的设计就是为了方便我们在接收到消息后发送一个回复的消息-->
+    <!--这个是sessionAwareQueue目的地 -->
+    <bean id="sessionAwareQueue" class="org.apache.activemq.command.ActiveMQQueue">
+        <constructor-arg>
+            <value>sessionAwareQueue</value>
+        </constructor-arg>
+    </bean>
+    <!-- 可以获取session的MessageListener -->
+    <bean id="consumerSessionAwareMessageListener" class="com.seafood.queue.ConsumerSessionAwareMessageListener">
+        <property name="destination" ref="queueDestination2"/>
+    </bean>
+    <!-- 监听sessionAwareQueue 队列的消息，把回复消息写入 queueDestination指向队列，即queue1 -->
+    <bean id="sessionAwareListenerContainer" class="org.springframework.jms.listener.DefaultMessageListenerContainer">
+        <property name="connectionFactory" ref="connectionFactory"/>
+        <property name="destination" ref="sessionAwareQueue"/>
+        <property name="messageListener" ref="consumerSessionAwareMessageListener"/>
+    </bean>
+
+    <!--MessageListenerAdapter类实现了MessageListener接口和SessionAwareMessageListener接口，它的主要作用是将接收到的消息进行类型转换，然后通过反射的形式把它交给一个普通的Java类进行处理。-->
+    <!--这个是adapterQueue目的地 -->
+    <bean id="adapterQueue" class="org.apache.activemq.command.ActiveMQQueue">
+        <constructor-arg>
+            <value>adapterQueue</value>
+        </constructor-arg>
+    </bean>
+    <!-- 消息监听适配器 -->
+    <bean id="messageListenerAdapter" class="org.springframework.jms.listener.adapter.MessageListenerAdapter">
+        <property name="delegate">
+            <bean class="com.seafood.queue.ConsumerListener"/>
+        </property>
+        <property name="defaultListenerMethod" value="receiveMessage"/>
+    </bean>
+    <!-- 消息监听适配器对应的监听容器 -->
+    <bean id="messageListenerAdapterContainer" class="org.springframework.jms.listener.DefaultMessageListenerContainer">
+        <property name="connectionFactory" ref="connectionFactory"/>
+        <property name="destination" ref="adapterQueue"/>
+        <!-- 使用MessageListenerAdapter来作为消息监听器 -->
+        <property name="messageListener" ref="messageListenerAdapter"/>
+    </bean>
+</beans>
